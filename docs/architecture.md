@@ -8,53 +8,76 @@
 ## Architecture Diagram
 
 ```mermaid
-flowchart TD
-    User(["👤 User\n(Sales / PM / RD)"])
-    Teams["Microsoft Teams\n/ Azure Web Chat"]
-    Bot["bot.py\nBot Framework SDK\nActivity routing · Card dispatch · Session state"]
+flowchart LR
+    classDef user      fill:#E8F4FD,stroke:#2E86AB,stroke-width:2px,color:#1a1a1a
+    classDef channel   fill:#F0F7FF,stroke:#2E86AB,stroke-width:1.5px,color:#1a1a1a
+    classDef bot       fill:#EBF5FB,stroke:#1A5276,stroke-width:2px,color:#1a1a1a
+    classDef agent     fill:#EAF2FF,stroke:#1F618D,stroke-width:1.5px,color:#1a1a1a
+    classDef hardgate  fill:#FDEDEC,stroke:#C0392B,stroke-width:2px,color:#c0392b
+    classDef llm       fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#1a1a1a
+    classDef card      fill:#F0FFF4,stroke:#27AE60,stroke-width:1.5px,color:#1a1a1a
+    classDef iq        fill:#F4ECF7,stroke:#7D3C98,stroke-width:2px,color:#1a1a1a
+    classDef graph     fill:#FDF2E9,stroke:#CA6F1E,stroke-width:1.5px,color:#1a1a1a
 
-    subgraph Pipeline["6-Agent Pipeline  —  pipeline.py"]
-        S1["S1 Gatekeeper\nExtract Who/Scenario/Problem/Expected\nVerdict: approved / rejected / info_needed"]
-        S2["S2 Value Transform\nGenerate acceptance criteria\n& test cases"]
-        S3["S3 Scenario Test\nTechnical plan · Self-test\nApprove / Reject / Defer"]
-        S4["S4 Release Review\n⛔ HARD GATE\nscenario_verified required"]
-        S5["S5 Feedback Collect\nSurvey design · Response analysis\nComplaint clustering"]
-        S6["S6 Retrospective\nRework pattern analysis\nWrite knowledge to Foundry IQ"]
+    %% ── Input Layer ──────────────────────────────────────
+    U(["👤 User\nSales · PM · RD · QA"]):::user
+    T["💬 Microsoft Teams\n/ Azure Web Chat"]:::channel
+
+    %% ── Bot Layer ────────────────────────────────────────
+    B["🤖 bot.py\nBot Framework SDK\nRouting · Session · Card Dispatch"]:::bot
+
+    %% ── 6-Agent Pipeline ─────────────────────────────────
+    subgraph PL["  🧠  6-Agent Pipeline  —  pipeline.py  "]
+        direction TB
+        S1["S1 · Gatekeeper\nExtract 4Q · Verdict\napproved / rejected / info_needed"]:::agent
+        S2["S2 · Value Transform\nAcceptance criteria\n& test case generation"]:::agent
+        S3["S3 · Scenario Test\nTech plan · Self-test\nApprove / Reject / Defer"]:::agent
+        S4["S4 · Release Review\n⛔ HARD GATE\nscenario_verified = true required"]:::hardgate
+        S5["S5 · Feedback Collect\nSurvey design\nResponse clustering"]:::agent
+        S6["S6 · Retrospective\nRework pattern analysis\n→ writes to Foundry IQ"]:::agent
+        S1 --> S2 --> S3 --> S4 --> S5 --> S6
     end
 
-    subgraph LLM["AI Engine"]
-        DeepSeek["DeepSeek API\n(OpenAI-compatible SDK)\nagent_runner.py"]
+    %% ── AI Engine ────────────────────────────────────────
+    subgraph AI["  ⚡  AI Engine  "]
+        direction TB
+        DS["DeepSeek API\nOpenAI-compatible SDK\nagent_runner.py"]:::llm
     end
 
-    subgraph Cards["Human-in-the-Loop\ncards.py — 17 Adaptive Cards"]
-        AC["Editable Adaptive Cards\nAI pre-fills · Human edits · Confirms\nAll stages interactive"]
+    %% ── Human-in-the-Loop ────────────────────────────────
+    subgraph HiL["  ✋  Human-in-the-Loop  "]
+        direction TB
+        AC["17 Adaptive Cards\nAI pre-fills · Human edits\nAll stages interactive\ncards.py + teams_compat()"]:::card
     end
 
-    subgraph IQ["🔍 Foundry IQ  —  Azure AI Search"]
-        Search["foundry-iq-index\n14-field unified schema\nsemantic search"]
-        Alert["⚠️ Pitfall Alert\nSimilar historical cases\nsurfaced before S1"]
-        Archive["13+ write points\nEvery stage output archived\nRetrospective knowledge entries"]
+    %% ── Foundry IQ ───────────────────────────────────────
+    subgraph FIQ["  🔍  Foundry IQ  —  Azure AI Search  "]
+        direction TB
+        IDX["foundry-iq-index\n14-field unified schema\nSemantic search"]:::iq
+        ALT["⚠️ Pitfall Alert\nHistorical cases surfaced\nbefore Stage 1 starts"]:::iq
+        ARC["13+ write points\nEvery stage archived\nRetrospective knowledge entries"]:::iq
+        IDX --> ALT
+        ARC --> IDX
     end
 
-    subgraph Graph["Microsoft Graph\nwork_iq.py"]
-        UserLookup["User lookup\nHandoff routing validation"]
+    %% ── Microsoft Graph ──────────────────────────────────
+    subgraph GR["  👥  Microsoft Graph  "]
+        UL["Work IQ\nUser lookup\nHandoff routing"]:::graph
     end
 
-    User --> Teams --> Bot
-    Bot --> S1
-    S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    %% ── Connections ──────────────────────────────────────
+    U  --> T --> B
+    B  --> PL
+    PL <--> AI
+    PL <--> HiL
+    HiL --> B --> T --> U
 
-    Pipeline <--> DeepSeek
-    Pipeline <--> AC
-    AC --> Bot --> Teams --> User
+    S1  -.->|"semantic search"| IDX
+    ALT -.->|"alert card"| B
+    S6  -->|"write knowledge"| ARC
+    PL  -->|"archive outputs"| ARC
 
-    S1 -.->|"search before start"| Search
-    Search --> Alert -.->|"alert card"| Bot
-    S6 -->|"write knowledge"| Archive
-    Pipeline -->|"archive each stage"| Archive
-    Archive --> Search
-
-    Bot <-.-> UserLookup
+    B <-.->|"user lookup"| UL
 ```
 
 ## System Overview
