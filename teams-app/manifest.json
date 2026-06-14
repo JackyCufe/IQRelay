@@ -1,0 +1,29 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "05ef88b8-3fa3-4ab4-8bf4-e2a62c08b423",
+  "packageName": "com.agentsleague.pipelinebot",
+  "name": { "short": "PipelineBot", "full": "AI Requirement Pipeline Bot" },
+  "description": {
+    "short": "AI-powered requirement pipeline with 6-stage agent collaboration",
+    "full": "AI Requirement Pipeline Agent: 6-stage collaborative workflow with Foundry IQ self-improving knowledge base. Gatekeeping → PM Review → R&D Review → Release Review → Feedback Analysis → Process Retrospective."
+  },
+  "developer": {
+    "name": "Agents League Hackathon",
+    "websiteUrl": "https://github.com",
+    "privacyUrl": "https://github.com",
+    "termsOfUseUrl": "https://github.com"
+  },
+  "icons": { "color": "color.png", "outline": "outline.png" },
+  "accentColor": "#0078D4",
+  "bots": [
+    {
+      "botId": "05ef88b8-3fa3-4ab4-8bf4-e2a62c08b423",
+      "scopes": ["personal"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"]
+}
