@@ -1,148 +1,234 @@
-# Architecture: Requirement Chain Agent — Microsoft Version
+# Architecture — ReqFlow
 
-> Track: Reasoning Agents (Microsoft Foundry + Foundry IQ)
-> IM Layer: Microsoft Teams (Adaptive Cards)
-> Core Principle: "IM as the only interface — AI handles everything in between"
-> Self-Improvement: Human feedback loop → writes back to Foundry IQ → system gets smarter over time
+> Track: Agents League Hackathon 2026 — Reasoning Agents
+> Core principle: AI structures, humans decide, the organization remembers
 
 ---
 
-## System Architecture Diagram
+## System Overview
 
-```mermaid
-graph TD
-    subgraph INPUT["📥 Input Layer — Teams Only"]
-        A1["👤 Sales / PM / Tester<br/>sends message in Teams chat"]
-        A2["🤖 Teams Bot<br/>Bot Framework WebSocket"]
-    end
-
-    subgraph REASONING["🧠 Reasoning Layer — 6-Agent Pipeline"]
-        B1["01 Gatekeeper Agent<br/>Who / Scenario / Problem / Expected Outcome<br/>❌ Blocks vague requirements"]
-        B2["02 Value Transform Agent<br/>Measurable acceptance criteria<br/>e.g. success rate ≥ 95%, steps ≤ 3"]
-        B3["03 Scenario Test Agent<br/>Customer-perspective test cases<br/>not feature-point testing"]
-        B4["04 Release Review Agent<br/>Checks all acceptance criteria<br/>✅ Approve / 🚫 Block release"]
-        B5["05 Feedback Collect Agent<br/>Structured customer feedback questionnaire"]
-        B6["06 Retrospective Agent<br/>ROI analysis + next version suggestions<br/>evidence-backed, cited from real feedback"]
-    end
-
-    subgraph IQ["🔍 Foundry IQ — Organizational Memory"]
-        C1["Knowledge Base<br/>Historical requirements · Past pitfalls<br/>Pushback records · How it was resolved"]
-        C2["Agentic Retrieval<br/>Retrieves relevant history before each Agent runs<br/>Returns cited, grounded context"]
-        C3["⚠️ Pitfall Alert<br/>Similar requirement failed before<br/>Here's what broke + who resolved it + citation"]
-    end
-
-    subgraph FEEDBACK["🔄 Self-Improvement Loop"]
-        F1["Human taps 'Push Back' in Teams card<br/>+ types reason"]
-        F2["Feedback Writer<br/>Structures the pushback:<br/>requirement_id · stage · reason · resolution"]
-        F3["Writes back to Foundry IQ<br/>Next similar requirement retrieves this record<br/>Agent adjusts without repeating the mistake"]
-    end
-
-    subgraph OUTPUT["📤 Output Layer — Teams Only"]
-        D1["📋 Adaptive Card — Approval<br/>One-click: Approve / Push back / Add info<br/>All decisions logged with timestamp + who"]
-        D2["⚠️ Adaptive Card — Pitfall Alert<br/>Shown before requirement enters pipeline<br/>Includes citation: req_id · version · resolver"]
-        D3["📊 Adaptive Card — Report<br/>Release verdict / Retrospective summary<br/>Deep link for full detail"]
-    end
-
-    subgraph STORAGE["💾 State & Audit Trail"]
-        E1["Azure Storage<br/>Requirement state · Approval records<br/>Full JSON schema per stage"]
-        E2["Azure AI Search<br/>Index backing Foundry IQ retrieval<br/>Free tier: 3 indexes · 10k docs"]
-    end
-
-    A1 --> A2
-    A2 --> B1
-
-    B1 -- "info_needed → push back card" --> D1
-    B1 -- "approved" --> B2
-    B2 -- "draft criteria → approval card" --> D1
-    D1 -- "human approved" --> B3
-    B3 --> B4
-    B4 -- "blocked → alert" --> D2
-    B4 -- "approved → report" --> D3
-    B4 --> B5
-    B5 --> B6
-    B6 --> D3
-
-    B1 & B2 & B3 --> C2
-    C2 <--> C1
-    C1 --> C3
-    C3 --> D2
-
-    D1 -- "push back + reason" --> F1
-    F1 --> F2
-    F2 --> F3
-    F3 --> C1
-
-    B1 & B2 & B3 & B4 & B5 & B6 --> E1
-    E1 <--> E2
-    E2 <--> C1
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Teams / Web Chat                          │
+│              (only interface — input & output)              │
+└────────────────────────┬────────────────────────────────────┘
+                         │ Bot Framework WebSocket
+┌────────────────────────▼────────────────────────────────────┐
+│                      bot.py                                  │
+│   Activity routing · Session state · Adaptive Card dispatch  │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────┐
+│                   pipeline.py                                │
+│              6-Stage Orchestrator                            │
+│                                                              │
+│  S1 Gatekeeper ──► S2 Value Transform ──► S3 Scenario Test  │
+│                                                   │          │
+│  S6 Retrospective ◄── S5 Feedback ◄── S4 Release Review     │
+└───┬──────────┬──────────┬──────────┬────────────────────────┘
+    │          │          │          │
+    ▼          ▼          ▼          ▼
+agent_runner  cards.py  schema_   foundry_iq.py
+(LLM calls)  (17 cards) builder   (Azure AI Search)
 ```
 
 ---
 
-## The Self-Improvement Loop (Key Differentiator)
+## Data Flow: Single Requirement
 
 ```
-Normal flow:
-  Requirement in → Agent reasons + Foundry IQ retrieves history → Card pushed to human
+1. User sends requirement text in Teams
+        ↓
+2. bot.py creates PipelineState, kicks off _show_stage1()
+        ↓
+3. foundry_iq.search_similar() → finds historical cases
+   → foundry_iq_alert_card() sent if matches found  ← PITFALL ALERT
+        ↓
+4. agent_runner calls DeepSeek API with agent prompt + schema
+   → schema_builder extracts + validates JSON output
+        ↓
+5. cards.py builds editable Adaptive Card (AI pre-filled)
+   → teams_compat() strips Teams-incompatible properties
+   → bot.py sends card via Bot Framework
+        ↓
+6. Human edits fields, clicks Confirm
+   → Action.Submit fires → bot._handle_card_action()
+        ↓
+7. foundry_iq.archive_to_iq() writes stage output to Azure AI Search
+        ↓
+8. Next stage starts (goto 4)
+        ↓
+9. S6 Retrospective: AI analyzes full pipeline data
+   → writes retrospective knowledge entry to Foundry IQ
+   → self-improving loop complete
+```
 
-When human pushes back:
-  Human taps "Push Back" + types reason in Teams card
-          ↓
-  Feedback Writer structures it:
-  {
-    "requirement_id": "req_001",
-    "stage": "value_transform",
-    "pushback_reason": "acceptance criteria too vague, missing metric",
-    "resolution": "added: response time ≤ 2s, measured by p95 latency",
-    "resolved_by": "PM Jackie",
-    "timestamp": "2026-06-10T14:00:00+08:00"
+---
+
+## Foundry IQ Integration (Azure AI Search)
+
+### Index: `foundry-iq-index`
+
+14-field unified schema, all entry types share the same index:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `id` | String (key) | `{req_id}-{stage}-{type}` |
+| `requirement_id` | String | Links all entries for one requirement |
+| `requirement_title` | String | Human-readable title |
+| `entry_type` | String | `stage_output / retrospective / survey_design / rejection_feedback / reference_doc` |
+| `stage` | Int32 | Pipeline stage (1-6, 99=retrospective) |
+| `revision` | Int32 | Rework counter |
+| `status` | String | `active / retracted` |
+| `author` | String | Who created the entry |
+| `timestamp` | DateTimeOffset | Creation time |
+| `last_modified` | DateTimeOffset | Last update |
+| `tags` | Collection(String) | Requirement type, domain tags |
+| `searchable_text` | String | Full-text search field |
+| `content` | String | JSON-serialized stage output (pitfalls, resolution, etc.) |
+| `retraction` | String | Retraction reason if status=retracted |
+
+### Write Points (13+ per pipeline run)
+
+```
+S1 approved    → stage_output  (stage=1)
+S2 confirmed   → stage_output  (stage=2)
+S3 confirmed   → stage_output  (stage=3)
+S4 confirmed   → stage_output  (stage=4)
+S5 survey      → survey_design (stage=5)
+S5 analysis    → stage_output  (stage=5)
+S6 knowledge   → retrospective (stage=99)
+S6 summary     → stage_output  (stage=6)
+any rejection  → rejection_feedback
+```
+
+### Read Points
+
+```
+Before S1 starts → search_similar() → pitfall alert card
+?question query  → search_similar() → knowledge card
+```
+
+---
+
+## Human-in-the-Loop Design
+
+Every stage follows the same pattern:
+
+```
+AI reasons (agent_runner)
+        ↓
+AI pre-fills editable card (cards.py)
+        ↓
+Human reviews + edits in Teams (Adaptive Card)
+        ↓
+Human clicks Confirm / Reject / Defer / Escalate
+        ↓
+Bot records decision + advances stage
+```
+
+### Stage 4 Hard Gate
+
+```python
+if form.get("scenario_verified") != "yes":
+    # CODE-LEVEL BLOCK — cannot be bypassed
+    send_error_card("Stage 4 blocked: scenario not verified")
+    return   # pipeline does not advance
+```
+
+### 3-Round info_needed Limit
+
+```
+Round 1: Gatekeeper → info_needed → ask user for more details
+Round 2: Gatekeeper → info_needed → ask again
+Round 3: Gatekeeper → info_needed → FORCED REJECTION
+         (prevents infinite loops, requirement archived as rejected)
+```
+
+### Rollback Chain
+
+```
+Human rejects at stage N
+        ↓
+rollback_notice_card sent to stage N-1 owner
+        ↓
+Options: Retry / Escalate further up / Abandon
+```
+
+---
+
+## Adaptive Cards (Teams-Compatible)
+
+17 cards total across the pipeline. All cards processed through `teams_compat()` before sending:
+
+```python
+def teams_compat(card):
+    # Fix 1: Input.label → preceding TextBlock
+    #        (Teams doesn't support label property natively)
+    # Fix 2: Action.Submit data values → all strings
+    #        (non-string values in submit data can break routing)
+    # Fix 3: isRequired removed from all Input elements
+    #        (isRequired causes entire card to render blank in Teams)
+```
+
+Key cards:
+
+| Card | Stage | Interactive Elements |
+|---|---|---|
+| `foundry_iq_alert_card` | Before S1 | Informational only |
+| `gatekeeping_edit_card` | S1 approved | 5 Input.Text + 2 Action.Submit |
+| `gatekeeping_card` | S1 rejected/info_needed | Informational |
+| `stage2_pm_card` | S2 | 4 Input.Text + Input.ChoiceSet + Action.Submit |
+| `stage3a_estimate_card` | S3a | 4 Input.Text + Action.Submit |
+| `stage3b_review_card` | S3b | Input.ChoiceSet (approve/reject/defer) |
+| `stage4_release_card` | S4 | Input.Text + Input.ChoiceSet + HARD GATE |
+| `stage5a_survey_card` | S5a | Input.Text (survey questions) |
+| `rollback_notice_card` | Any rejection | Action.Submit (retry/escalate/abandon) |
+
+---
+
+## Session State
+
+In-memory store (`_active_pipelines` dict, keyed by user ID):
+
+```python
+{
+  "user_id": {
+    "state": PipelineState,   # requirement + all stage schemas
+    "stage": int,             # current stage (1-6)
+    "status": str,            # active / waiting_card / rejected / completed
+    "last_active": float,     # unix timestamp (TTL: 2 hours)
   }
-          ↓
-  Written back into Foundry IQ knowledge base
-          ↓
-  Next time a similar requirement comes in:
-  Agent retrieves: "Last time a similar req had vague criteria,
-  PM pushed back asking for latency metric. Final version: ≤ 2s p95."
-          ↓
-  Agent pre-empts the problem. Fewer push backs over time.
+}
 ```
 
-**This is the "organizational memory" effect**: the system gets smarter with every human correction, without retraining any model.
+`PipelineState` carries the full requirement through all stages:
+- `original_text` — raw user input
+- `schemas` — dict of stage number → stage output JSON
+- `gatekeeping_rounds` — info_needed counter
+- `rework_count` — rollback counter (written to Foundry IQ)
 
 ---
 
-## Layer Summary
+## Technology Stack
 
-| Layer | Responsibility | Technology |
-|---|---|---|
-| **Input** | Only entry point: Teams chat | Teams Bot Framework |
-| **Reasoning** | 6-Agent multi-step pipeline | Azure OpenAI GPT-4o |
-| **Foundry IQ** | Retrieve history with citations, surface pitfall alerts | Azure AI Foundry + AI Search |
-| **Self-Improvement** | Human pushback → structured → written back to knowledge base | Feedback Writer module |
-| **Output** | Only output: Adaptive Cards in Teams | Teams Adaptive Cards |
-| **Storage** | State, audit trail, JSON schema per stage | Azure Storage + AI Search |
-
----
-
-## Differentiation: Why This Isn't "Just Meeting Summary"
-
-| Capability | Feishu AI / M365 Copilot | Requirement Chain Agent |
-|---|---|---|
-| Meeting / chat summary | ✅ | Not the focus |
-| Record decisions | ✅ | ✅ |
-| **Track if decisions actually resolved** | ❌ | ✅ |
-| **Detect info loss across handoffs** | ❌ | ✅ Gatekeeper + JSON schema contracts |
-| **"We tried this before, here's what broke"** | ❌ | ✅ Foundry IQ pitfall retrieval + citation |
-| **Block release if criteria unmet** | ❌ | ✅ Release Review Agent |
-| **Gets smarter from human corrections** | ❌ | ✅ Human feedback → Foundry IQ write-back |
+| Component | Technology |
+|---|---|
+| Bot runtime | Python 3.10, botbuilder-core |
+| LLM | DeepSeek-chat via OpenAI-compatible SDK |
+| Knowledge base | Azure AI Search (foundry-iq-index) |
+| Card rendering | Adaptive Cards (Teams Web Chat) |
+| User lookup | Microsoft Graph API (work_iq) |
+| State | In-memory dict + TTL eviction |
+| Config | python-dotenv + YAML |
 
 ---
 
-## Microsoft IQ Compliance
+## Known Limitations
 
-✅ **Foundry IQ** integrated as organizational memory backbone
-- Every agent queries Foundry IQ before reasoning
-- Every pitfall alert includes citation (req_id, version, resolver)
-- Human feedback writes back to Foundry IQ, closing the learning loop
-
-Satisfies hard requirement: **at least one Microsoft IQ layer integrated**.
+| Item | Detail |
+|---|---|
+| State persistence | In-memory only — bot restart loses active pipelines |
+| work_iq | Microsoft Graph requires `User.Read.All` permission — currently 403 in demo env, graceful fallback |
+| Concurrency | Single-process; parallel pipelines from different users share one process |
+| Teams Sideload | Tested via Azure Web Chat; Teams desktop sideload validated separately |

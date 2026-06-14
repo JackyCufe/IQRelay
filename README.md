@@ -1,148 +1,213 @@
 # ReqFlow — AI Requirement Pipeline Agent
 
->**Agents League Hackathon — Reasoning Agents Track**
->6-Agent collaborative pipeline. AI structures. Humans decide. The organization gets smarter every run.
+> **Agents League Hackathon 2026 — Reasoning Agents Track**
+> 6-Agent collaborative pipeline. AI structures. Humans decide. The organization gets smarter every run.
 
 ---
 
-## What It Does
+## The Problem
 
-ReqFlow is an AI requirement pipeline that prevents information loss between handoffs and accumulates organizational knowledge automatically.
+When requirements move from Sales → PM → R&D → Release → Feedback, two things always go wrong:
 
-**The problem:** When requirements move from Sales → PM → R&D → Release, information decays. The same mistakes repeat across teams. New hires have no access to institutional memory.
+1. **Information decays across handoffs** — by the time R&D gets it, the original customer pain is lost
+2. **The same mistakes repeat** — no one knows that a similar requirement failed 6 months ago for the exact same reason
 
-**Our solution:** 6 AI Agents process every requirement end-to-end. Each stage the AI structures input, humans verify and correct. Every rejection, every correction, every decision is automatically written back to a knowledge base. Next time someone submits a similar requirement, the system surfaces what went wrong last time.
+## The Solution
+
+ReqFlow routes every requirement through 6 AI Agents in sequence. At each stage:
+- AI pre-fills structured forms from unstructured input
+- A human reviews, edits, and confirms via interactive Adaptive Card
+- The decision (and any corrections) are written to **Foundry IQ** (Azure AI Search)
+
+Next time a similar requirement arrives, the system surfaces historical pitfalls before Stage 1 even starts.
 
 ---
 
 ## Pipeline (6 Agents)
 
 ```
-User Input → S1 Gatekeeper → S2a PM Form → S2b AI Generate → S3a RD Estimate → S3b Self-Test → S4 Release Review → S5a Survey → S5b CSV Analysis → S5c Results → S6 Retrospective
+User Input
+    ↓
+S1  Gatekeeper        → AI extracts Who/Scenario/Problem/Expected, human confirms
+    ↓
+S2  Value Transform   → AI generates acceptance criteria + test cases, human edits
+    ↓
+S3  Scenario Test     → Human fills technical plan; AI analyzes self-test results
+    ↓
+S4  Release Review    → AI pre-assesses; HARD GATE blocks if scenario not verified
+    ↓
+S5  Feedback Collect  → AI drafts survey; human pastes responses; AI clusters results
+    ↓
+S6  Retrospective     → AI analyzes rework patterns → writes knowledge to Foundry IQ
 ```
 
-| Stage | Agent | What AI Does | What Human Does |
+| Stage | Agent | AI Role | Human Role |
 |---|---|---|---|
-| S1 | Gatekeeper | Extracts 4Q (who/scene/problem/expected), judges verdict | Reviews AI extraction, edits, confirms |
-| S2a | Value Transform | Pre-fills PM form | Fills core value, acceptance criteria, priority |
-| S2b | Value Transform (full) | Generates structured criteria + test cases | Reviews output, edits, confirms |
-| S3a | Scenario Test | No AI pre-fill (by design) | Fills technical plan, workload, risks |
-| S3b | Scenario Test (full) | AI analyzes self-test results | Reports self-test result, decides (approve/reject/defer) |
-| S4 | Release Review | Pre-assesses release verdict | Fills release info, HARD GATE: scenario must be verified |
-| S5a | Feedback Analysis | Generates survey questions | Reviews, edits, publishes |
-| S5b | Feedback Analysis (full) | Analyzes CSV feedback data | Pastes customer feedback |
-| S6 | Retrospective | Analyzes process bottlenecks + rework patterns | Reviews retrospective |
+| S1 | Gatekeeper | Extract 4Q, judge verdict | Edit extraction, confirm or reject |
+| S2 | Value Transform | Generate acceptance criteria, test cases | Edit, set priority, confirm |
+| S3 | Scenario Test | Analyze self-test results | Fill tech plan, report self-test, approve/reject/defer |
+| S4 | Release Review | Pre-assess release readiness | Fill release info — **blocked if scenario unverified** |
+| S5 | Feedback Collect | Draft survey questions, cluster feedback | Publish survey, paste responses |
+| S6 | Retrospective | Analyze rework patterns, write knowledge entry | Review, confirm archival |
 
 ---
 
 ## Key Features
 
-### Self-Improving Knowledge Loop
-- 15 write points → Foundry IQ (Azure AI Search)
-- Every rejection captured as structured feedback
-- Next similar requirement → Stage 1 alerts with historical pitfalls
-- Stage 6 retrospective analyzes rework patterns from actual pipeline data
+### Self-Improving Knowledge Loop (Foundry IQ)
+- **13+ write points** across all 6 stages — every stage output archived to Azure AI Search
+- Stage 1 automatically searches for similar historical requirements and shows pitfall alerts
+- Stage 6 retrospective writes structured knowledge entries (lessons learned, root causes)
+- Each new run makes the system smarter without retraining any model
 
-### Human-in-the-Loop Design
-- All 6 stages use editable Adaptive Cards (v1.5)
-- AI pre-fills suggestions, humans confirm or correct
-- Stage 4 Hard Gate: scenario_verified=no → code-level block, cannot proceed
-- Max 3 rounds of `info_needed` before forced rejection
+### Human-in-the-Loop at Every Stage
+- All stages use interactive **Adaptive Cards** — AI pre-fills, humans verify and correct
+- **Stage 4 Hard Gate**: `scenario_verified = false` → code-level block, cannot proceed
+- **3-round info_needed limit**: if Gatekeeper asks for more info 3 times with no resolution → forced rejection
+- Rollback chain: reject at any stage → notify previous stage owner → retry / escalate / abandon
 
-### Multi-Person Collaboration
-- Each card includes "next person" field for handoff
-- Rollback chain: reject → notify previous stage → retry/escalate/abandon
+### Multi-Person Handoff Support
+- Every card includes a "next person" field — tracks who owns each stage
 - Rework counter tracked per requirement in Foundry IQ
+- Full audit trail: every decision logged with stage, person, timestamp
 
 ---
 
-## Microsoft Technologies Used
+## Microsoft Technologies
 
-| Technology | Role |
+| Technology | How It's Used |
 |---|---|
-| **Foundry IQ** (Azure AI Search) | Knowledge base — 15 write points, semantic search, self-improving loop |
-| **Work IQ** (Microsoft Graph) | User lookup by name, validates handoff routing |
-| **Azure Bot Service** | Bot hosting & Teams integration |
-| **Bot Framework SDK** | Adaptive Cards, Activity routing, Auth |
-| **Adaptive Cards v1.5** | Interactive editable forms at every stage |
-| **DeepSeek API** (via OpenAI SDK) | Powering all 6 Agent LLM calls |
+| **Foundry IQ** (Azure AI Search) | Organizational memory — semantic search, pitfall alerts, knowledge archival |
+| **Azure Bot Service** | Bot hosting and Teams channel integration |
+| **Bot Framework SDK (Python)** | Activity routing, Adaptive Card dispatch, session state |
+| **Adaptive Cards** (Teams-compatible) | Interactive editable forms at every stage — 17 cards total |
+| **Microsoft Teams / Web Chat** | Only interface — all input and output flows through chat |
+| **DeepSeek API** (OpenAI-compatible) | Powers all 6 Agent LLM calls |
 
 ---
 
 ## Architecture
 
 ```
-Teams / Web Chat
-       ↓
-   bot.py (Bot Framework)
-       ↓
-   pipeline.py (6-Stage Orchestrator)
-    ├── agent_runner.py (LLM calls)
-    ├── foundry_iq.py (Azure AI Search)
-    ├── work_iq.py (Microsoft Graph)
-    ├── cards.py (Adaptive Cards v1.5)
-    └── schema_builder.py (JSON validation)
+Teams / Azure Web Chat Test
+         ↓
+    bot.py  ── activity routing, session state, card dispatch
+         ↓
+    pipeline.py  ── 6-stage orchestrator
+     ├── agent_runner.py    ── LLM calls (DeepSeek via OpenAI SDK)
+     ├── foundry_iq.py      ── Azure AI Search (archive + semantic search)
+     ├── work_iq.py         ── Microsoft Graph (user lookup)
+     ├── cards.py           ── Adaptive Cards (17 cards, Teams-compatible)
+     └── schema_builder.py  ── JSON extraction + schema validation
+         ↓
+    Foundry IQ (Azure AI Search)
+     ── foundry-iq-index: 14-field unified schema
+     ── entry_type: stage_output / retrospective / survey_design / rejection_feedback / reference_doc
+     ── semantic search on every new requirement (pitfall alert before S1)
+```
+
+---
+
+## Foundry IQ Schema
+
+Every record written to Azure AI Search follows a unified 14-field schema:
+
+```json
+{
+  "id": "req_abc123-s1-stage_output",
+  "requirement_id": "req_abc123",
+  "requirement_title": "Hotel robot response time under 5s",
+  "entry_type": "stage_output",
+  "stage": 1,
+  "revision": 1,
+  "status": "active",
+  "author": "system",
+  "timestamp": "2026-06-14T15:30:00Z",
+  "tags": ["customer_reported", "performance"],
+  "searchable_text": "...",
+  "content": "{\"resolution\": \"...\", \"pitfalls\": [...]}",
+  "retraction": null
+}
 ```
 
 ---
 
 ## Quick Start
 
-1. Copy `.env.template` to `.env` and fill in your credentials:
-```bash
-cp .env.template .env
-```
+**Prerequisites:** Python 3.10+, ngrok, Azure Bot Service configured
 
-2. Install dependencies:
 ```bash
+# 1. Clone and install
+git clone https://github.com/JackyCufe/ReqFlow.git
+cd ReqFlow
 pip install -r requirements.txt
-```
 
-3. Start ngrok:
-```bash
+# 2. Configure credentials
+cp .env.template .env
+# Fill in: DEEPSEEK_API_KEY, AI_SEARCH_ENDPOINT, AI_SEARCH_KEY, MicrosoftAppId, MicrosoftAppPassword
+
+# 3. Start ngrok tunnel
 ngrok http 3978
-```
+# Copy the https URL → set as Messaging Endpoint in Azure Bot Service
 
-4. Start the bot:
-```bash
+# 4. Start the bot
 python bot.py
 ```
 
-5. Configure Azure Bot Messaging Endpoint with your ngrok URL:
-```
-https://your-ngrok-url.ngrok-free.dev/api/messages
-```
-
-6. Test in Azure Portal → Test in Web Chat, or sideload the Teams App Package.
+Then open **Azure Portal → Your Bot → Test in Web Chat** and send a requirement.
 
 ---
 
-## Demo Script
+## Usage
 
-1. **Happy Path:** Submit a requirement → follow cards through all 6 stages
-2. **Self-Improvement:** Reject at Stage 2 → capture feedback → Foundry IQ learns → next requirement gets alerted
-3. **Hard Gate:** Stage 4 submit with scenario_verified=no → blocked, must fix
-4. **Knowledge Query:** `?how to set up EDI` → Foundry IQ returns historical lessons
+**Submit a requirement:**
+```
+The front-desk receptionist needs the service robot to respond within 5 seconds
+during guest check-in, because it currently takes over 20 seconds.
+```
+
+**Query the knowledge base:**
+```
+?hotel robot response time
+?defect classification
+?EDI integration
+```
+
+**Flow:** Foundry IQ alert (historical pitfalls) → S1 editable card → Confirm → S2 → ... → S6 → knowledge archived
+
+---
+
+## Demo Scenario
+
+1. **Query first:** `?defect classification` → shows seed knowledge (QC pitfalls from manufacturing runs)
+2. **Submit requirement** → Foundry IQ alert shows similar historical cases before pipeline starts
+3. **Walk through all 6 cards** — each one shows AI pre-fill + human edit capability
+4. **Stage 4 hard gate** — try submitting with scenario unverified → blocked
+5. **Query again after S6** → the just-completed requirement is now in the knowledge base
 
 ---
 
 ## Project Structure
 
 ```
-├── bot.py                  # Teams Bot entry (activity routing, card dispatching)
+ReqFlow/
+├── bot.py                    # Teams Bot entry — routing, session, card dispatch
 ├── pipeline/
-│   ├── pipeline.py         # 6-stage orchestrator
-│   ├── agent_runner.py     # LLM call engine (DeepSeek via OpenAI SDK)
-│   ├── foundry_iq.py       # Azure AI Search integration (archive + search)
-│   ├── work_iq.py          # Microsoft Graph user lookup
-│   ├── cards.py            # Adaptive Cards v1.5 (17 cards)
-│   └── schema_builder.py   # JSON extraction + validation
-├── agents/                 # Agent system prompts (Markdown)
-├── config/                 # Configuration + pipeline YAML
-├── test_bot_interactive.py # E2E test suite (12 tests)
-└── teams-app/              # Teams App Package (for sideloading)
+│   ├── pipeline.py           # 6-stage orchestrator
+│   ├── agent_runner.py       # LLM engine (DeepSeek via OpenAI SDK)
+│   ├── foundry_iq.py         # Azure AI Search — archive + semantic search
+│   ├── work_iq.py            # Microsoft Graph — user lookup
+│   ├── cards.py              # 17 Adaptive Cards (Teams-compatible)
+│   └── schema_builder.py     # JSON extraction + schema validation
+├── agents/                   # 6 Agent system prompts (Markdown)
+├── config/                   # config.py + pipeline_config.yaml
+├── docs/                     # architecture.md + sprint-plan.md
+├── scripts/                  # index rebuild + seed data utilities
+├── teams-app/manifest.json   # Teams App sideload package
+└── test_bot_interactive.py   # E2E test suite
 ```
 
 ---
 
 Built for **Agents League Hackathon 2026** — Reasoning Agents Track
+Microsoft Foundry + Azure AI Search + Bot Framework + Adaptive Cards
