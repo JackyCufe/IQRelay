@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReqFlow — Architecture Diagram</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: #F5F3FF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 32px;
+  }
+
+  .canvas {
+    width: 960px;
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 40px;
+    box-shadow: 0 4px 40px rgba(99,102,241,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+  .header-left h1 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1E1B4B;
+    letter-spacing: -0.5px;
+  }
+  .header-left p {
+    font-size: 12px;
+    color: #6366F1;
+    font-weight: 600;
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge {
+    background: #EEF2FF;
+    color: #4338CA;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 100px;
+    border: 1px solid #C7D2FE;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Grid layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 180px 1fr 220px;
+    grid-template-rows: auto auto auto;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* ── Section cards ── */
+  .section {
+    border-radius: 14px;
+    padding: 16px;
+    border: 1.5px solid transparent;
+  }
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.7;
+  }
+
+  /* Color themes */
+  .s-input   { background:#F0F7FF; border-color:#BFDBFE; }
+  .s-input .section-label { color: #1D4ED8; }
+
+  .s-bot     { background:#EEF2FF; border-color:#C7D2FE; }
+  .s-bot .section-label { color: #4338CA; }
+
+  .s-pipeline{ background:#EFF6FF; border-color:#BAE6FD; grid-column: 1 / -1; }
+  .s-pipeline .section-label { color: #0369A1; }
+
+  .s-ai      { background:#FFFBEB; border-color:#FDE68A; }
+  .s-ai .section-label { color: #B45309; }
+
+  .s-hitl    { background:#F0FDF4; border-color:#BBF7D0; }
+  .s-hitl .section-label { color: #15803D; }
+
+  .s-iq      { background:#FAF5FF; border-color:#E9D5FF; }
+  .s-iq .section-label { color: #7C3AED; }
+
+  .s-graph   { background:#FFF7ED; border-color:#FED7AA; }
+  .s-graph .section-label { color: #C2410C; }
+
+  /* ── Node boxes ── */
+  .node {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 10px 12px;
+    border: 1.5px solid rgba(0,0,0,0.08);
+    margin-bottom: 8px;
+  }
+  .node:last-child { margin-bottom: 0; }
+  .node-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1E1B4B;
+    line-height: 1.3;
+  }
+  .node-sub {
+    font-size: 10.5px;
+    color: #64748B;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+  .node-tag {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 100px;
+    margin-top: 5px;
+  }
+
+  /* ── Pipeline row ── */
+  .pipeline-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .stage {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1.5px solid #BAE6FD;
+    text-align: center;
+    position: relative;
+  }
+  .stage-num {
+    font-size: 9px;
+    font-weight: 800;
+    color: #0369A1;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .stage-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: #1E1B4B;
+    line-height: 1.3;
+  }
+  .stage-desc {
+    font-size: 9.5px;
+    color: #64748B;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .stage.hardgate {
+    border-color: #FECACA;
+    background: #FFF5F5;
+  }
+  .stage.hardgate .stage-num { color: #DC2626; }
+  .stage.hardgate .stage-name { color: #991B1B; }
+
+  .hardgate-tag {
+    background: #FEE2E2;
+    color: #DC2626;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    display: inline-block;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Arrow connectors ── */
+  .arrow-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin: 4px 0;
+    padding: 0 calc(100%/12);
+  }
+  .arrow {
+    text-align: center;
+    color: #94A3B8;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  /* ── Bottom row ── */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 160px;
+    gap: 16px;
+    margin-top: 0;
+  }
+
+  /* ── IQ nodes ── */
+  .iq-nodes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .iq-node {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1.5px solid #E9D5FF;
+  }
+  .iq-node-full {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1.5px solid #E9D5FF;
+    margin-top: 8px;
+  }
+  .iq-title { font-size: 11px; font-weight: 700; color: #6D28D9; }
+  .iq-sub   { font-size: 9.5px; color: #7C3AED; margin-top: 3px; line-height: 1.4; opacity: 0.85; }
+
+  /* ── Write points list ── */
+  .write-points {
+    list-style: none;
+    margin-top: 6px;
+  }
+  .write-points li {
+    font-size: 9.5px;
+    color: #64748B;
+    padding: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .write-points li::before {
+    content: '';
+    width: 5px; height: 5px;
+    background: #A78BFA;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Flow arrows between sections ── */
+  .flow-arrows {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 0;
+  }
+  .flow-line {
+    font-size: 11px;
+    color: #94A3B8;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .flow-label {
+    font-size: 9px;
+    color: #94A3B8;
+    background: #F8FAFC;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #E2E8F0;
+  }
+
+  /* ── Connector column ── */
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 18px;
+    color: #CBD5E1;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #E2E8F0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: #64748B;
+    font-weight: 500;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+  }
+  .footer-right {
+    font-size: 10px;
+    color: #94A3B8;
+    font-weight: 500;
+  }
+
+  /* Tags */
+  .tag-blue   { background:#DBEAFE; color:#1D4ED8; }
+  .tag-green  { background:#DCFCE7; color:#15803D; }
+  .tag-purple { background:#F3E8FF; color:#7C3AED; }
+  .tag-orange { background:#FFEDD5; color:#C2410C; }
+  .tag-red    { background:#FEE2E2; color:#DC2626; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>ReqFlow — System Architecture</h1>
+      <p>Agents League Hackathon 2026 · Reasoning Agents Track</p>
+    </div>
+    <div class="badge">Microsoft Foundry + Azure AI Search</div>
+  </div>
+
+  <!-- Row 1: Input + Bot + AI/HiL -->
+  <div style="display:grid; grid-template-columns: 1fr 20px 1fr 20px 1fr 20px 1fr; gap:0; align-items:center; margin-bottom:16px;">
+
+    <!-- User -->
+    <div class="section s-input">
+      <div class="section-label">Input Layer</div>
+      <div class="node">
+        <div class="node-title">👤 User</div>
+        <div class="node-sub">Sales · PM · RD · QA</div>
+        <span class="node-tag tag-blue">requirement text</span>
+      </div>
+      <div class="node">
+        <div class="node-title">💬 Microsoft Teams</div>
+        <div class="node-sub">/ Azure Web Chat Test</div>
+        <span class="node-tag tag-blue">only interface</span>
+      </div>
+    </div>
+
+    <div class="connector">→</div>
+
+    <!-- Bot -->
+    <div class="section s-bot">
+      <div class="section-label">Bot Layer</div>
+      <div class="node">
+        <div class="node-title">🤖 bot.py</div>
+        <div class="node-sub">Bot Framework SDK<br>Activity routing · Session state<br>Card dispatch · TTL eviction</div>
+        <span class="node-tag tag-purple">botbuilder-core</span>
+      </div>
+    </div>
+
+    <div class="connector">⇄</div>
+
+    <!-- AI Engine -->
+    <div class="section s-ai">
+      <div class="section-label">AI Engine</div>
+      <div class="node">
+        <div class="node-title">⚡ DeepSeek API</div>
+        <div class="node-sub">OpenAI-compatible SDK<br>agent_runner.py<br>schema_builder.py</div>
+        <span class="node-tag tag-orange">LLM reasoning</span>
+      </div>
+    </div>
+
+    <div class="connector">⇄</div>
+
+    <!-- Human-in-the-Loop -->
+    <div class="section s-hitl">
+      <div class="section-label">Human-in-the-Loop</div>
+      <div class="node">
+        <div class="node-title">✋ 17 Adaptive Cards</div>
+        <div class="node-sub">AI pre-fills all fields<br>Human edits & confirms<br>cards.py + teams_compat()</div>
+        <span class="node-tag tag-green">every stage</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Row 2: 6-Agent Pipeline -->
+  <div class="section s-pipeline" style="margin-bottom:16px;">
+    <div class="section-label">6-Agent Pipeline — pipeline.py</div>
+    <div class="pipeline-row">
+      <div class="stage">
+        <div class="stage-num">S1</div>
+        <div class="stage-name">Gatekeeper</div>
+        <div class="stage-desc">Extract 4Q<br>approved / rejected<br>info_needed (×3 max)</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">S2</div>
+        <div class="stage-name">Value Transform</div>
+        <div class="stage-desc">Acceptance criteria<br>Test case generation<br>Priority setting</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">S3</div>
+        <div class="stage-name">Scenario Test</div>
+        <div class="stage-desc">Tech plan estimation<br>Self-test execution<br>Approve / Defer</div>
+      </div>
+      <div class="stage hardgate">
+        <div class="stage-num">S4</div>
+        <div class="stage-name">Release Review</div>
+        <div class="stage-desc">Release readiness<br>assessment</div>
+        <div class="hardgate-tag">⛔ HARD GATE</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">S5</div>
+        <div class="stage-name">Feedback Collect</div>
+        <div class="stage-desc">Survey design<br>Response clustering<br>Complaint analysis</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">S6</div>
+        <div class="stage-name">Retrospective</div>
+        <div class="stage-desc">Rework pattern<br>analysis → writes<br>to Foundry IQ</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Foundry IQ + Microsoft Graph -->
+  <div class="bottom-row">
+
+    <!-- Foundry IQ -->
+    <div class="section s-iq" style="grid-column: span 2;">
+      <div class="section-label">Foundry IQ — Azure AI Search (foundry-iq-index)</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+        <div class="iq-node">
+          <div class="iq-title">Semantic Search</div>
+          <div class="iq-sub">14-field unified schema<br>Triggered before S1<br>Surfaces similar cases</div>
+        </div>
+        <div class="iq-node">
+          <div class="iq-title">⚠️ Pitfall Alert</div>
+          <div class="iq-sub">Historical failures<br>shown before pipeline<br>starts — informational</div>
+        </div>
+        <div class="iq-node">
+          <div class="iq-title">Knowledge Archive</div>
+          <div class="iq-sub">13+ write points<br>per pipeline run<br>stage_output · retrospective<br>survey_design · rejection</div>
+        </div>
+      </div>
+      <div style="margin-top:10px; background:#fff; border-radius:10px; padding:10px; border:1.5px solid #E9D5FF;">
+        <div style="font-size:10px; font-weight:700; color:#6D28D9; margin-bottom:6px;">Self-Improving Loop</div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:10px; color:#64748B; background:#F5F3FF; padding:3px 10px; border-radius:6px; border:1px solid #DDD6FE;">New requirement</span>
+          <span style="color:#A78BFA">→</span>
+          <span style="font-size:10px; color:#64748B; background:#F5F3FF; padding:3px 10px; border-radius:6px; border:1px solid #DDD6FE;">Search similar history</span>
+          <span style="color:#A78BFA">→</span>
+          <span style="font-size:10px; color:#64748B; background:#F5F3FF; padding:3px 10px; border-radius:6px; border:1px solid #DDD6FE;">Alert with pitfalls</span>
+          <span style="color:#A78BFA">→</span>
+          <span style="font-size:10px; color:#64748B; background:#F5F3FF; padding:3px 10px; border-radius:6px; border:1px solid #DDD6FE;">Pipeline runs</span>
+          <span style="color:#A78BFA">→</span>
+          <span style="font-size:10px; color:#64748B; background:#F5F3FF; padding:3px 10px; border-radius:6px; border:1px solid #DDD6FE;">S6 writes knowledge back</span>
+          <span style="color:#10B981; font-weight:700">↺</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Microsoft Graph -->
+    <div class="section s-graph">
+      <div class="section-label">Microsoft Graph</div>
+      <div class="node">
+        <div class="node-title">👥 Work IQ</div>
+        <div class="node-sub">work_iq.py<br>User lookup by name<br>Handoff routing<br>validation</div>
+        <span class="node-tag tag-orange">Microsoft Graph API</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#BFDBFE"></div> Input / Channel</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#C7D2FE"></div> Bot Framework</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#BAE6FD"></div> 6-Agent Pipeline</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#BBF7D0"></div> Human-in-the-Loop</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#E9D5FF"></div> Foundry IQ</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FECACA"></div> Hard Gate</div>
+    </div>
+    <div class="footer-right">ReqFlow · github.com/JackyCufe/ReqFlow</div>
+  </div>
+
+</div>
+</body>
+</html>
