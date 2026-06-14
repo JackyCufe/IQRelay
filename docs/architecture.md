@@ -9,18 +9,18 @@
 
 ```mermaid
 flowchart LR
-    classDef user      fill:#E8F4FD,stroke:#2E86AB,stroke-width:2px,color:#1a1a1a
-    classDef channel   fill:#F0F7FF,stroke:#2E86AB,stroke-width:1.5px,color:#1a1a1a
-    classDef bot       fill:#EBF5FB,stroke:#1A5276,stroke-width:2px,color:#1a1a1a
-    classDef agent     fill:#EAF2FF,stroke:#1F618D,stroke-width:1.5px,color:#1a1a1a
-    classDef hardgate  fill:#FDEDEC,stroke:#C0392B,stroke-width:2px,color:#c0392b
-    classDef llm       fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#1a1a1a
-    classDef card      fill:#F0FFF4,stroke:#27AE60,stroke-width:1.5px,color:#1a1a1a
-    classDef iq        fill:#F4ECF7,stroke:#7D3C98,stroke-width:2px,color:#1a1a1a
-    classDef msgraph   fill:#FDF2E9,stroke:#CA6F1E,stroke-width:1.5px,color:#1a1a1a
+    classDef user      fill:#E8F4FD,stroke:#2E86AB,stroke-width:2px,color:#1a1a1a,rx:0,ry:0
+    classDef channel   fill:#F0F7FF,stroke:#2E86AB,stroke-width:1.5px,color:#1a1a1a,rx:0,ry:0
+    classDef bot       fill:#EBF5FB,stroke:#1A5276,stroke-width:2px,color:#1a1a1a,rx:0,ry:0
+    classDef agent     fill:#EAF2FF,stroke:#1F618D,stroke-width:1.5px,color:#1a1a1a,rx:0,ry:0
+    classDef hardgate  fill:#FDEDEC,stroke:#C0392B,stroke-width:2px,color:#c0392b,rx:0,ry:0
+    classDef llm       fill:#FEF9E7,stroke:#D4AC0D,stroke-width:2px,color:#1a1a1a,rx:0,ry:0
+    classDef card      fill:#F0FFF4,stroke:#27AE60,stroke-width:1.5px,color:#1a1a1a,rx:0,ry:0
+    classDef iq        fill:#F4ECF7,stroke:#7D3C98,stroke-width:2px,color:#1a1a1a,rx:0,ry:0
+    classDef msgraph   fill:#FDF2E9,stroke:#CA6F1E,stroke-width:1.5px,color:#1a1a1a,rx:0,ry:0
 
     %% ── Input Layer ──────────────────────────────────────
-    U(["👤 User\nSales · PM · RD · QA"]):::user
+    U["👤 User\nSales · PM · RD · QA"]:::user
     T["💬 Microsoft Teams\n/ Azure Web Chat"]:::channel
 
     %% ── Bot Layer ────────────────────────────────────────
