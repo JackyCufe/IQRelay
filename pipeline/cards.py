@@ -6,6 +6,54 @@ from __future__ import annotations
 from typing import Any
 
 
+def teams_compat(card: dict) -> dict:
+    """Make an Adaptive Card render reliably in Microsoft Teams / Web Chat.
+
+    Fixes host-renderer pitfalls that cause the WHOLE card to render blank:
+    1. `Input.*` elements using the `label` property (AC 1.3+) — converted to
+       a preceding TextBlock and the `label` is stripped.
+    2. `Action.Submit` `data` values that are non-strings (e.g. integers like
+       `stage: 1`) — coerced to strings, since some hosts reject the card
+       outright when submit data is not string-typed.
+    3. `Input.*` with `isRequired: true` — CONFIRMED via binary search to make
+       Teams render the entire card blank (even when `errorMessage` is present).
+       We strip `isRequired`/`errorMessage`; required-field validation is
+       enforced server-side in the bot handlers instead.
+    """
+    if not isinstance(card, dict):
+        return card
+
+    # ── Fix 1 + 3: Input labels and required-flag removal ──
+    body = card.get("body")
+    if isinstance(body, list):
+        new_body: list[dict] = []
+        for item in body:
+            if isinstance(item, dict) and str(item.get("type", "")).startswith("Input."):
+                if item.get("label"):
+                    label_text = item.pop("label")
+                    new_body.append({
+                        "type": "TextBlock",
+                        "text": f"**{label_text}**",
+                        "wrap": True,
+                        "spacing": "Small",
+                    })
+                # isRequired blanks the whole card in Teams — remove it
+                item.pop("isRequired", None)
+                item.pop("errorMessage", None)
+            new_body.append(item)
+        card["body"] = new_body
+
+    # ── Fix 2: stringify Action.Submit data values ──
+    def _stringify_data(actions):
+        for a in actions or []:
+            data = a.get("data")
+            if isinstance(data, dict):
+                a["data"] = {k: (v if isinstance(v, str) else str(v)) for k, v in data.items()}
+    _stringify_data(card.get("actions"))
+
+    return card
+
+
 def _factset(facts: dict) -> dict:
     """Build a FactSet from a dict of key-value pairs."""
     return {
@@ -299,7 +347,7 @@ def gatekeeping_edit_card(schema1: dict) -> dict:
         {"type": "Input.Text", "id": "expected_outcome", "label": "🎯 Expected Outcome",
          "value": gk.get("expected_outcome") or "", "isMultiline": True},
         {"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (PM姓名)",
-         "placeholder": "e.g. 张三 / Zhang San", "isRequired": True},
+         "placeholder": "e.g. 张三 / Zhang San", "value": "Jacky", "isRequired": True},
     ]
 
     card = {
@@ -434,7 +482,7 @@ def stage2_confirm_card(schema2: dict) -> dict:
                  "value": tc_text,
                  "isMultiline": True})
     body.append({"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (RD姓名)",
-                 "placeholder": "e.g. 李四 / Li Si", "isRequired": True})
+                 "placeholder": "e.g. 李四 / Li Si", "value": "Jacky", "isRequired": True})
 
     return {
         "type": "AdaptiveCard", "version": "1.5",
@@ -453,7 +501,7 @@ def stage2_confirm_card(schema2: dict) -> dict:
 
 # ─── Stage 3a: RD Estimate Form ─────────────────────────
 
-def stage3a_estimate_card() -> dict:
+def stage3a_estimate_card(tech_plan: str = "", workload_days: float = 3, risks: str = "") -> dict:
     """Stage 3a: RD fills technical plan, workload estimate, risks.
     First phase — RD estimates before actual development."""
     body = [
@@ -462,15 +510,17 @@ def stage3a_estimate_card() -> dict:
         {"type": "TextBlock", "text": "**First: describe the technical approach and estimated effort.**",
          "wrap": True, "spacing": "Small", "size": "Small", "color": "Accent"},
         {"type": "Input.Text", "id": "tech_plan", "label": "🔧 Technical Plan",
+         "value": tech_plan,
          "placeholder": "e.g. Azure Custom Vision + Edge container on IPC-3000, REST API to MES",
          "isMultiline": True, "isRequired": True},
         {"type": "Input.Number", "id": "workload_days", "label": "📅 Estimated Workload (person-days)",
-         "min": 0.5, "max": 90, "value": 3, "isRequired": True},
+         "min": 0.5, "max": 90, "value": workload_days, "isRequired": True},
         {"type": "Input.Text", "id": "risks", "label": "⚠️ Technical Risks",
+         "value": risks,
          "placeholder": "e.g. Factory lighting variance may degrade model accuracy; need on-site calibration",
          "isMultiline": True, "isRequired": True},
         {"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (RD自测)",
-         "placeholder": "e.g. 自己 / Same person", "value": "自己", "isRequired": True},
+         "placeholder": "e.g. 自己 / Same person", "value": "Jacky", "isRequired": True},
     ]
     return {
         "type": "AdaptiveCard", "version": "1.5",
@@ -519,7 +569,7 @@ def stage3b_result_card() -> dict:
          "placeholder": "e.g. 自测部分通过，需要修复边缘case",
          "isMultiline": True},
         {"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (发版审批人姓名)",
-         "placeholder": "e.g. 王五 / Wang Wu", "isRequired": True},
+         "placeholder": "e.g. 王五 / Wang Wu", "value": "Jacky", "isRequired": True},
     ]
     return {
         "type": "AdaptiveCard", "version": "1.5",
@@ -592,7 +642,7 @@ def stage4_release_card(
          "placeholder": "e.g. 客户场景测试未全部通过，需要补充边缘case",
          "isMultiline": True},
         {"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (售后姓名)",
-         "placeholder": "e.g. 赵六 / Zhao Liu", "isRequired": True},
+         "placeholder": "e.g. 赵六 / Zhao Liu", "value": "Jacky", "isRequired": True},
     ]
     return {
         "type": "AdaptiveCard", "version": "1.5",
@@ -706,7 +756,7 @@ def stage5a_survey_card(questions: str = "", req_id: str = "") -> dict:
          ),
          "isMultiline": True, "isRequired": True},
         {"type": "Input.Text", "id": "next_person", "label": "👤 下一级接手人 (反馈收集团队)",
-         "placeholder": "e.g. 售后团队 / After-sales team", "isRequired": True},
+         "placeholder": "e.g. 售后团队 / After-sales team", "value": "Jacky", "isRequired": True},
     ]
     return {
         "type": "AdaptiveCard", "version": "1.5",

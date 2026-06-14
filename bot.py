@@ -50,6 +50,7 @@ from pipeline.cards import (
     foundry_iq_alert_card,
     foundry_iq_result_card,
     card_activity,
+    teams_compat,
 )
 from pipeline.foundry_iq import search_similar, write_lesson, archive_to_iq
 from pipeline.work_iq import verify_next_person
@@ -66,17 +67,36 @@ _adapter = BotFrameworkAdapter(SETTINGS)
 
 # ─── In-Memory Pipeline State (per user) ─────────────
 
+import time
+
 _active_pipelines: dict[str, dict] = {}
-"""Structure: {user_id: {"stage": int, "phase": str|None, "state": PipelineState}}"""
+"""Structure: {user_id: {"stage": int, "phase": str|None, "state": PipelineState, "last_active": float}}"""
+
+# A pipeline left idle longer than this is considered stale: the next message
+# starts a fresh pipeline instead of being treated as a continuation.
+_PIPELINE_TTL_SECONDS = 15 * 60  # 15 minutes
 
 
 # ─── Card Sender Utility ──────────────────────────────
 
 async def _send_card(turn_context: TurnContext, card: dict):
+    # Guard against empty/malformed cards rendering as blank attachments
+    body_n = len((card or {}).get("body", []))
+    if not card or body_n == 0:
+        print(f"  [_send_card] ⚠️ EMPTY CARD suppressed: {card}")
+        await turn_context.send_activity("⚠️ Internal: empty card suppressed.")
+        return
+    # Teams cannot render Input.label — downgrade labels to TextBlocks
+    card = teams_compat(card)
     activity = Activity(type="message", attachments=[
         Attachment(content_type="application/vnd.microsoft.card.adaptive", content=card)
     ])
-    await turn_context.send_activity(activity)
+    try:
+        await turn_context.send_activity(activity)
+    except Exception as e:
+        import traceback
+        print(f"  [_send_card] ❌ send failed: {e}\n{traceback.format_exc()}")
+        await turn_context.send_activity(f"⚠️ Card render failed: {str(e)[:200]}")
 
 
 def _user_id(turn_context: TurnContext) -> str:
@@ -91,7 +111,9 @@ def _user_name(turn_context: TurnContext) -> str:
 
 async def _show_stage1(turn_context: TurnContext, state: PipelineState):
     """Stage 1: AI gatekeeps → show editable confirmation card (Human-in-the-Loop)."""
-    await turn_context.send_activity("🔄 **Starting Requirement Analysis Pipeline...**")
+    # Only announce "Starting" on the first round; later rounds already showed "Re-analyzing".
+    if state.gatekeeping_rounds == 0:
+        await turn_context.send_activity("🔄 **Starting Requirement Analysis Pipeline...**")
 
     similar = search_similar(state.original_text, top=3)
     if similar:
@@ -113,7 +135,8 @@ async def _show_stage1(turn_context: TurnContext, state: PipelineState):
             pipeline_data["status"] = "rejected"
     elif verdict == "info_needed":
         pipeline_data = _active_pipelines.get(_user_id(turn_context))
-        rounds = (pipeline_data.get("gatekeeping_rounds", 0) if pipeline_data else 0) + 1
+        # Single source of truth: state.gatekeeping_rounds (incremented in run_stage1_gatekeeper)
+        rounds = state.gatekeeping_rounds
         if rounds >= 3:
             await _send_card(turn_context, gatekeeping_card(schema1))
             await turn_context.send_activity(
@@ -131,19 +154,34 @@ async def _show_stage1(turn_context: TurnContext, state: PipelineState):
                 "Provide additional details and I will re-analyze.\n_Type the updated info now._"
             )
             if pipeline_data:
-                pipeline_data["gatekeeping_rounds"] = rounds
                 pipeline_data["status"] = "info_needed"
     else:
         await _send_card(turn_context, gatekeeping_edit_card(schema1))
 
 
 async def _show_stage2_pm(turn_context: TurnContext, state: PipelineState):
-    """Stage 2a: PM editable form — AI pre-fills, PM edits."""
+    """Stage 2a: PM editable form — AI pre-fills, PM edits.
+    If PM already filled the form (modify/rollback), restore their input instead
+    of re-running AI pre-fill (which would overwrite human edits)."""
+    gk = state.schemas.get(1, {}).get("gatekeeping", {})
+
+    # Restore prior PM input on modify/rollback — never overwrite human edits
+    if getattr(state, "stage2_pm_data", None):
+        await turn_context.send_activity("📐 **Stage 2: Product Manager Review** (restoring your previous input)")
+        pm = state.stage2_pm_data
+        await _send_card(turn_context, stage2_pm_card(
+            state.schemas.get(1, {}),
+            core_value=pm.get("core_value", ""),
+            acceptance_criteria=pm.get("acceptance_criteria", ""),
+            feature_def=pm.get("feature_def", ""),
+            priority=pm.get("priority", "P1"),
+        ))
+        return
+
     await turn_context.send_activity("📐 **Entering Stage 2: Product Manager Review**")
     await turn_context.send_activity("🤖 **AI pre-filling form based on Stage 1 analysis...**")
 
     # Pre-fill with AI (lightweight single-turn LLM, fast)
-    gk = state.schemas.get(1, {}).get("gatekeeping", {})
     from pipeline.agent_runner import quick_completion, extract_json_from_response
 
     prompt = (
@@ -190,10 +228,19 @@ async def _show_stage2_confirm(turn_context: TurnContext, state: PipelineState):
         _active_pipelines.pop(_user_id(turn_context), None)
 
 
-async def _show_stage3_estimate(turn_context: TurnContext):
-    """Stage 3a: RD fills technical plan, workload estimate, risks."""
+async def _show_stage3_estimate(turn_context: TurnContext, state: PipelineState | None = None):
+    """Stage 3a: RD fills technical plan, workload estimate, risks.
+    Restores prior estimate on back/rollback so RD input is not lost."""
     await turn_context.send_activity("🧪 **Entering Stage 3a: R&D Estimate**")
-    await _send_card(turn_context, stage3a_estimate_card())
+    est = getattr(state, "stage3_estimate", None) if state else None
+    if est:
+        await _send_card(turn_context, stage3a_estimate_card(
+            tech_plan=est.get("tech_plan", ""),
+            workload_days=est.get("workload_days") or 3,
+            risks=est.get("risks", ""),
+        ))
+    else:
+        await _send_card(turn_context, stage3a_estimate_card())
 
 
 async def _show_stage3_result(turn_context: TurnContext):
@@ -324,7 +371,11 @@ class RequirementBot(ActivityHandler):
         if activity.value and isinstance(activity.value, dict):
             action_data = activity.value
             action = action_data.get("action", "")
-            stage = action_data.get("stage", 0)
+            # stage may arrive as a string (submit data is stringified for Teams compat)
+            try:
+                stage = int(action_data.get("stage", 0))
+            except (TypeError, ValueError):
+                stage = 0
             await self._handle_card_action(turn_context, uid, action, stage)
             return
 
@@ -340,6 +391,18 @@ class RequirementBot(ActivityHandler):
         if uid in _active_pipelines:
             # Pipeline is active — handle based on status
             pipeline_data = _active_pipelines[uid]
+
+            # TTL: a stale/abandoned pipeline must not hijack a brand-new requirement
+            last_active = pipeline_data.get("last_active", 0)
+            if time.time() - last_active > _PIPELINE_TTL_SECONDS:
+                _active_pipelines.pop(uid, None)
+                await turn_context.send_activity(
+                    "⏱️ _Previous session expired. Starting fresh._"
+                )
+                await self._start_pipeline(turn_context, uid, text)
+                return
+            pipeline_data["last_active"] = time.time()
+
             status = pipeline_data.get("status", "active")
 
             if text.lower() == "cancel":
@@ -351,11 +414,33 @@ class RequirementBot(ActivityHandler):
                 await self._handle_query(turn_context, text[1:].strip())
                 return
 
+            if text.lower() in ("new", "restart", "reset"):
+                _active_pipelines.pop(uid, None)
+                await turn_context.send_activity("🆕 **Cleared. Send your new requirement now.**")
+                return
+
             if status == "info_needed":
-                # User provided additional info — resubmit to Stage 1
-                await turn_context.send_activity("🔄 **Re-analyzing with updated information...**")
                 state = pipeline_data["state"]
-                state.original_text = text
+                # Detect "fresh start" vs genuine supplement:
+                # if the user re-sends a substantial standalone sentence that is NOT
+                # already contained in the accumulated context, and it reads like a
+                # complete requirement, treat it as a brand-new pipeline.
+                already = (state.accumulated_input or "").lower()
+                is_supplement = (
+                    text.lower() not in already           # not an exact resend of prior input
+                    and len(text) < 200                   # short clarifying additions
+                )
+                if not is_supplement:
+                    # Likely a brand-new requirement (resend or long standalone text) → restart clean
+                    _active_pipelines.pop(uid, None)
+                    await turn_context.send_activity("🆕 **Treating this as a new requirement.**")
+                    await self._start_pipeline(turn_context, uid, text)
+                    return
+
+                # Genuine supplement — APPEND (not overwrite) and resubmit to Stage 1
+                await turn_context.send_activity("🔄 **Re-analyzing with updated information...**")
+                # Accumulate multi-round context so earlier info is never lost
+                state.accumulated_input = f"{state.accumulated_input}\n{text}".strip()
                 pipeline_data["status"] = "active"
                 await _show_stage1(turn_context, state)
                 return
@@ -385,6 +470,7 @@ class RequirementBot(ActivityHandler):
             return
 
         pipeline_data = _active_pipelines[uid]
+        pipeline_data["last_active"] = time.time()
         state: PipelineState = pipeline_data["state"]
         current_stage = pipeline_data["stage"]
 
@@ -449,7 +535,7 @@ class RequirementBot(ActivityHandler):
             f"✅ **Stage 2 confirmed.** 📨 Handed off to: **{next_name}**\n{wiq}")
             pipeline_data["stage"] = 3
             pipeline_data["phase"] = "estimate"
-            await _show_stage3_estimate(turn_context)
+            await _show_stage3_estimate(turn_context, state)
 
         elif action == "stage2_modify":
             # Go back to PM edit card
@@ -474,9 +560,9 @@ class RequirementBot(ActivityHandler):
 
         elif action == "stage3_back":
             pipeline_data["phase"] = "estimate"
-            await _show_stage3_estimate(turn_context)
+            await _show_stage3_estimate(turn_context, state)
 
-        elif action == "stage3_submit":
+        elif action == "feedback_submit":
             # Write human feedback as rejection_feedback doc (self-improvement loop)
             state.archive("rejection_feedback", stage=stage,
                           author=_user_name(turn_context),
@@ -514,6 +600,8 @@ class RequirementBot(ActivityHandler):
             if approval == "reject":
                 rework = pipeline_data.get("rework_count", 0) + 1
                 pipeline_data["rework_count"] = rework
+                # Carry the rejection reason into state so the rollback target stage can show it
+                state.last_rollback_reason = approval_note or "Not specified"
                 state.archive("rejection_feedback", stage=3, author=_user_name(turn_context),
                               content={"action": "reject", "reason": approval_note, "rework_count": rework},
                               tags=["rejection", "stage3"])
@@ -660,18 +748,30 @@ class RequirementBot(ActivityHandler):
 
         # ── Rollback Actions ─────────────────────────
         elif action == "rollback_retry":
-            target_stage = form.get("stage", 2)
+            try:
+                target_stage = int(form.get("stage", 2))
+            except (TypeError, ValueError):
+                target_stage = 2
             pipeline_data["stage"] = target_stage
             pipeline_data["status"] = "active"
             await turn_context.send_activity(
                 f"🔄 **Resubmitting from Stage {target_stage}...**"
             )
+            # Surface the rejection reason so the PM addresses it this round (in-pipeline feedback loop)
+            reason = getattr(state, "last_rollback_reason", None)
+            if reason:
+                await turn_context.send_activity(
+                    f"📌 **Why it was sent back:** {reason}\n_Adjust the form below to address this._"
+                )
             if target_stage == 2:
                 pipeline_data["phase"] = "pm"
                 await _show_stage2_pm(turn_context, state)
 
         elif action == "rollback_escalate":
-            from_stage = form.get("from_stage", 3)
+            try:
+                from_stage = int(form.get("from_stage", 3))
+            except (TypeError, ValueError):
+                from_stage = 3
             if from_stage == 3:
                 await _send_card(turn_context, rollback_notice_card(
                     from_stage=3, to_stage=1, reason="Escalated further up",
@@ -717,7 +817,8 @@ class RequirementBot(ActivityHandler):
         seed_demo_data()
         name = _user_name(turn_context)
         state = PipelineState(text, submitted_by=name)
-        _active_pipelines[uid] = {"stage": 1, "phase": None, "state": state}
+        _active_pipelines[uid] = {"stage": 1, "phase": None, "state": state,
+                                  "last_active": time.time()}
         await _show_stage1(turn_context, state)
 
     async def _handle_query(self, turn_context: TurnContext, question: str):

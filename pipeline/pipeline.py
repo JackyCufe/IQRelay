@@ -43,6 +43,10 @@ class PipelineState:
     def __init__(self, original_text: str, submitted_by: str = "user"):
         self.requirement_id = _gen_id()
         self.original_text = original_text
+        # accumulated_input keeps the full multi-round context for Stage 1.
+        # original_text stays immutable (schema contract); supplements are appended here.
+        self.accumulated_input = original_text
+        self.gatekeeping_rounds = 0  # incremented each time Stage 1 runs
         self.submitted_by = submitted_by
         self.submitted_at = _now()
         self.requirement_title = ""  # AI generated after Stage 1
@@ -191,12 +195,21 @@ def _generate_title(state: PipelineState) -> str:
 # ─── Pipeline Stages ───────────────────────────────────
 
 def run_stage1_gatekeeper(state: PipelineState) -> dict:
-    """Stage 1: Gatekeeper — extract four questions, block pseudo-requirements."""
+    """Stage 1: Gatekeeper — extract four questions, block pseudo-requirements.
+
+    Multi-round safe: uses accumulated_input (all rounds joined) so supplements
+    add to — never overwrite — earlier information. Previously extracted fields
+    are carried forward when the current round returns null for them.
+    """
     state._stage_start(1)
-    state.log_event("Stage 1: Gatekeeper started")
+    state.gatekeeping_rounds += 1
+    state.log_event(f"Stage 1: Gatekeeper started (round {state.gatekeeping_rounds})")
+
+    # Full multi-round context (not just the latest message)
+    full_input = state.accumulated_input or state.original_text
 
     # Search Foundry IQ for similar historical requirements
-    results = search_similar(state.original_text, top=3)
+    results = search_similar(full_input, top=3)
     # Flatten new unified schema for agent compatibility
     state.foundry_iq_results = []
     for r in results:
@@ -213,37 +226,85 @@ def run_stage1_gatekeeper(state: PipelineState) -> dict:
             "entry_type": r.get("entry_type", ""),
         })
 
+    # Carry forward fields already extracted in previous rounds (if any)
+    prev_gk = state.schemas.get(1, {}).get("gatekeeping", {})
+
     context = {
         "requirement_id": state.requirement_id,
         "foundry_iq_similar": state.foundry_iq_results,
         "max_rounds": 3,
+        "current_round": state.gatekeeping_rounds,
+        "previously_extracted": {
+            "customer_who": prev_gk.get("customer_who"),
+            "usage_scenario": prev_gk.get("usage_scenario"),
+            "problem": prev_gk.get("problem"),
+            "expected_outcome": prev_gk.get("expected_outcome"),
+        },
     }
 
     result = run_agent(
         agent_file="01-gatekeeper.md",
-        user_message=state.original_text,
+        user_message=full_input,
         extra_context=context,
         tools=_PIPELINE_TOOLS,
         tool_handlers=_TOOL_HANDLERS,
     )
 
     gate_result = extract_gatekeeping_result(result["tool_calls"]) or {}
+
+    # Some models emit the literal string "null"/"none"/"n/a" instead of real null.
+    def _clean(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        if s.lower() in ("null", "none", "n/a", "na", "unspecified", "unknown", ""):
+            return None
+        return s
+
+    # ─── Field-level merge: carry forward prior values when this round is null ───
+    def _merge(field: str):
+        cur = _clean(gate_result.get(field))
+        if cur is None:
+            return _clean(prev_gk.get(field))
+        return cur
+
+    merged_who = _merge("customer_who")
+    merged_scenario = _merge("usage_scenario")
+    merged_problem = _merge("problem")
+    merged_expected = _merge("expected_outcome")
+
+    # ─── Verdict is decided MECHANICALLY from merged fields, NOT by the model ───
+    # (The model often mis-judges "rejected"/"approved" or contradicts itself
+    #  across rounds; the pipeline owns the final verdict.)
+    req_type = gate_result.get("requirement_type") or prev_gk.get("requirement_type")
+    required = [merged_scenario, merged_problem, merged_expected]
+    if req_type == "customer_reported" or req_type is None:
+        required.append(merged_who)
+    filled = [f for f in required if f]
+
+    if len(filled) == 0:
+        verdict = "rejected"            # nothing extractable at all
+    elif all(required):
+        verdict = "approved"            # every required field present
+    else:
+        verdict = "info_needed"         # some still missing → keep asking
+
     schema1 = build_schema1(
-        verdict=gate_result.get("verdict", "info_needed"),
-        customer_who=gate_result.get("customer_who"),
-        usage_scenario=gate_result.get("usage_scenario"),
-        problem=gate_result.get("problem"),
-        expected_outcome=gate_result.get("expected_outcome"),
+        verdict=verdict,
+        customer_who=merged_who,
+        usage_scenario=merged_scenario,
+        problem=merged_problem,
+        expected_outcome=merged_expected,
         reject_reason=gate_result.get("reject_reason"),
         followup_questions=gate_result.get("followup_questions"),
-        requirement_source=gate_result.get("requirement_source"),
-        requirement_type=gate_result.get("requirement_type"),
+        requirement_source=gate_result.get("requirement_source") or prev_gk.get("requirement_source"),
+        requirement_type=req_type,
         source_traceable=gate_result.get("source_traceable"),
         req_id=state.requirement_id,
         original_text=state.original_text,
         submitted_by=state.submitted_by,
         submitted_at=state.submitted_at,
-        rounds=1,
+        rounds=state.gatekeeping_rounds,
     )
 
     state.schemas[1] = schema1

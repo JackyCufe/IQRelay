@@ -66,6 +66,19 @@ You do NOT judge whether a requirement is good or worth doing. You do NOT evalua
 - "The bot is too slow" → valid: problem="bot too slow"
 - "The bot is not smart enough" → valid: problem="bot not smart enough"
 
+**Multi-round accumulation (CRITICAL):**
+- The user message may contain MULTIPLE rounds of input joined across turns. Treat the WHOLE message as one requirement — extract from ALL of it, not just the last line.
+- `<pipeline_context>` may include `previously_extracted` (fields captured in earlier rounds). If the current text does not restate a field but it exists in `previously_extracted`, KEEP that prior value — never reset a known field back to null.
+- Example: round 1 "the robot is not intelligent enough" (problem captured) → round 2 "the monitor of LIMINGGUOJI reports that" (customer captured). Final result MUST keep BOTH problem AND customer_who.
+
+**Target values are expected_outcome (CRITICAL):**
+- When `problem` already describes a "too slow / too long / exceeds X / fails / not accurate" pain point, any later message giving a **target number or desired state** is the `expected_outcome` — extract it there, even if phrased as a plain statement.
+- Treat these as `expected_outcome`, NOT as a contradiction of the problem:
+  - "respond in 5s" / "responds in 5s" / "within 5 seconds" / "在5秒内响应" → expected_outcome = "robot responds within 5 seconds"
+  - "accuracy 95%" / "success rate ≥ 99%" → expected_outcome = that target
+- Do NOT mark the requirement rejected just because a target value seems to conflict with the current problem (e.g. problem says ">20s", user later says "5s"). The 5s is the GOAL. Capture it as expected_outcome.
+- If a later message is genuinely just a target value and a usage context, fill BOTH usage_scenario and expected_outcome from it as appropriate.
+
 ### Step 3: Source Verification (pattern matching, NOT quality judgment)
 
 Only verify source traceability for **customer_reported** type. Other types auto-set `source_traceable = true` (internal sources are inherently traceable).

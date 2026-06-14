@@ -38,11 +38,14 @@ def _now_iso() -> str:
 
 
 def _coerce_str_or_null(val: Any) -> str | None:
-    """Convert value to str, None/empty → None."""
+    """Convert value to str, None/empty → None.
+    Also treats literal model artifacts like "null"/"none"/"n/a" as None."""
     if val is None:
         return None
     s = str(val).strip()
-    return s if s else None
+    if not s or s.lower() in ("null", "none", "n/a", "na", "unspecified", "unknown"):
+        return None
+    return s
 
 
 def _coerce_list_of_str(val: Any) -> list[str]:

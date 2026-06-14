@@ -3,6 +3,7 @@ foundry_iq.py — Azure AI Search integration module
 Handles: similar requirement search, pitfall recording, experience lookup
 """
 from __future__ import annotations
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -51,12 +52,23 @@ def search_similar(
             search_text=query,
             top=top,
             filter=filter_expr,
-            select=["id", "requirement", "type", "problem", "resolution",
-                    "pitfalls", "push_back_reason", "stage", "created_at",
-                    "requirement_id", "requirement_title", "entry_type",
-                    "status", "author", "timestamp", "tags", "searchable_text", "content"],
+            select=["id", "requirement_id", "requirement_title", "entry_type",
+                    "stage", "revision", "status", "author", "timestamp",
+                    "last_modified", "tags", "searchable_text", "content"],
         )
-        return [dict(r) for r in results]
+        out = []
+        for r in results:
+            d = dict(r)
+            # content/retraction are stored as JSON strings — parse back to dict
+            for key in ("content", "retraction"):
+                v = d.get(key)
+                if isinstance(v, str) and v.strip():
+                    try:
+                        d[key] = json.loads(v)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+            out.append(d)
+        return out
     except Exception as e:
         print(f"[foundry_iq] search failed, falling back to demo: {e}")
         return _demo_search(query, top)
@@ -170,7 +182,13 @@ def archive_to_iq(
 
     try:
         client = _get_client()
-        client.merge_or_upload_documents([doc])
+        # Azure index stores content/retraction as JSON strings (no nested object type)
+        azure_doc = dict(doc)
+        if isinstance(azure_doc.get("content"), (dict, list)):
+            azure_doc["content"] = json.dumps(azure_doc["content"], ensure_ascii=False)
+        if isinstance(azure_doc.get("retraction"), (dict, list)):
+            azure_doc["retraction"] = json.dumps(azure_doc["retraction"], ensure_ascii=False)
+        client.merge_or_upload_documents([azure_doc])
         print(f"[foundry_iq] archived: {doc_id} (type={entry_type}, stage={stage}, rev={revision})")
     except Exception as e:
         print(f"[foundry_iq] archive failed (Azure unavailable), saved to demo store: {e}")
