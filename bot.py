@@ -221,11 +221,20 @@ async def _show_stage2_confirm(turn_context: TurnContext, state: PipelineState):
     """Stage 2b: Run AI → show confirmation card with structured criteria + test cases."""
     await turn_context.send_activity("🤖 **AI generating structured criteria + test cases...**")
     schema2 = run_stage2_value_transform(state)
-    if schema2:
-        await _send_card(turn_context, stage2_confirm_card(schema2))
-    else:
-        await turn_context.send_activity("⚠️ AI failed to generate test cases. Pipeline stopped.")
-        _active_pipelines.pop(_user_id(turn_context), None)
+    if not schema2:
+        # AI failed — build a minimal fallback schema so the PM can fill manually
+        req_id = getattr(state, "requirement_id", "unknown")
+        pm = getattr(state, "stage2_pm_data", {}) or {}
+        schema2 = {
+            "requirement_id": req_id,
+            "pm_priority": pm.get("priority", "P1"),
+            "structured_criteria": [],
+            "test_cases": [],
+        }
+        await turn_context.send_activity(
+            "⚠️ AI generation timed out — showing empty form. Please fill in manually."
+        )
+    await _send_card(turn_context, stage2_confirm_card(schema2))
 
 
 async def _show_stage3_estimate(turn_context: TurnContext, state: PipelineState | None = None):
