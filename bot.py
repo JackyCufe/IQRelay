@@ -565,12 +565,18 @@ class RequirementBot(ActivityHandler):
                 "lesson": form.get("feedback_lesson", ""),
             }
             await turn_context.send_activity(
-                "✅ **Feedback written to Foundry IQ.**\n\n"
-                "Next time a similar requirement enters the pipeline, this insight will surface "
-                "as a Pitfall Alert — the system just got smarter.\n\n"
-                "_Send a new requirement or `?question` to search._"
+                "✅ **Feedback written to Foundry IQ.** The system just got smarter.\n\n"
+                "_Next time a similar requirement arrives, this insight will surface as a Pitfall Alert._"
             )
-            _active_pipelines.pop(uid, None)
+            # Now trigger rollback — send notice card so user can retry/escalate/abandon
+            rollback_to = max(1, stage - 1)
+            rework = pipeline_data.get("rework_count", 0) + 1
+            pipeline_data["rework_count"] = rework
+            state.last_rollback_reason = form.get("feedback_reason", "Not specified")
+            await _send_card(turn_context, rollback_notice_card(
+                from_stage=stage, to_stage=rollback_to,
+                reason=form.get("feedback_reason", ""),
+                req_id=state.requirement_id, rework=rework))
 
         elif action == "feedback_skip":
             await turn_context.send_activity(
@@ -753,6 +759,9 @@ class RequirementBot(ActivityHandler):
             if target_stage == 2:
                 pipeline_data["phase"] = "pm"
                 await _show_stage2_pm(turn_context, state)
+            elif target_stage == 1:
+                pipeline_data["phase"] = None
+                await _show_stage1(turn_context, state)
 
         elif action == "rollback_escalate":
             try:
