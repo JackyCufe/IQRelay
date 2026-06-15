@@ -421,21 +421,8 @@ class RequirementBot(ActivityHandler):
 
             if status == "info_needed":
                 state = pipeline_data["state"]
-                # Detect "fresh start" vs genuine supplement:
-                # if the user re-sends a substantial standalone sentence that is NOT
-                # already contained in the accumulated context, and it reads like a
-                # complete requirement, treat it as a brand-new pipeline.
-                already = (state.accumulated_input or "").lower()
-                is_supplement = (
-                    text.lower() not in already           # not an exact resend of prior input
-                    and len(text) < 200                   # short clarifying additions
-                )
-                if not is_supplement:
-                    # Likely a brand-new requirement (resend or long standalone text) → restart clean
-                    _active_pipelines.pop(uid, None)
-                    await turn_context.send_activity("🆕 **Treating this as a new requirement.**")
-                    await self._start_pipeline(turn_context, uid, text)
-                    return
+                # Always treat the next message as a supplement when waiting for info.
+                # If the user wants to start fresh, they should type 'cancel' first.
 
                 # Genuine supplement — APPEND (not overwrite) and resubmit to Stage 1
                 await turn_context.send_activity("🔄 **Re-analyzing with updated information...**")
