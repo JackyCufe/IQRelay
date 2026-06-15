@@ -439,10 +439,16 @@ class RequirementBot(ActivityHandler):
                 )
                 return
 
+            if status == "completed":
+                # Previous pipeline finished — auto-clear and start fresh
+                _active_pipelines.pop(uid, None)
+                await self._start_pipeline(turn_context, uid, text)
+                return
+
             # Active pipeline — acknowledge text without blocking
             await turn_context.send_activity(
-                "📝 Continue with the current stage or use the card buttons to proceed.\n"
-                "_Send `cancel` to stop the pipeline._"
+                "📝 A pipeline is already in progress. Use the card buttons to proceed.\n"
+                "_Send `cancel` to stop and start a new requirement._"
             )
             return
 
