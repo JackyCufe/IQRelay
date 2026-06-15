@@ -1,4 +1,4 @@
-# Architecture — ReqFlow
+# Architecture — IQ Relay
 
 > Track: Agents League Hackathon 2026 — Reasoning Agents
 > Core principle: AI structures, humans decide, the organization remembers

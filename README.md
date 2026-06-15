@@ -1,4 +1,4 @@
-# ReqFlow — AI Requirement Pipeline Agent
+# IQ Relay — AI Requirement Pipeline Agent
 
 > **Agents League Hackathon 2026 — Reasoning Agents Track**
 > 6-Agent collaborative pipeline. AI structures. Humans decide. The organization gets smarter every run.
@@ -14,7 +14,7 @@ When requirements move from Sales → PM → R&D → Release → Feedback, two t
 
 ## The Solution
 
-ReqFlow routes every requirement through 6 AI Agents in sequence. At each stage:
+IQ Relay routes every requirement through 6 AI Agents in sequence. At each stage:
 - AI pre-fills structured forms from unstructured input
 - A human reviews, edits, and confirms via interactive Adaptive Card
 - The decision (and any corrections) are written to **Foundry IQ** (Azure AI Search)
@@ -138,8 +138,8 @@ Every record written to Azure AI Search follows a unified 14-field schema:
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/JackyCufe/ReqFlow.git
-cd ReqFlow
+git clone https://github.com/JackyCufe/IQ Relay.git
+cd IQ Relay
 pip install -r requirements.txt
 
 # 2. Configure credentials
@@ -190,7 +190,7 @@ during guest check-in, because it currently takes over 20 seconds.
 ## Project Structure
 
 ```
-ReqFlow/
+IQ Relay/
 ├── bot.py                    # Teams Bot entry — routing, session, card dispatch
 ├── pipeline/
 │   ├── pipeline.py           # 6-stage orchestrator
