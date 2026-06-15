@@ -472,7 +472,9 @@ class RequirementBot(ActivityHandler):
         state: PipelineState = pipeline_data["state"]
         current_stage = pipeline_data["stage"]
 
-        if stage != current_stage:
+        # Rollback actions are cross-stage by design — skip stage check for them
+        _rollback_actions = {"rollback_retry", "rollback_escalate", "rollback_abandon", "feedback_submit"}
+        if stage != current_stage and action not in _rollback_actions:
             await turn_context.send_activity(
                 f"⚠️ Action for stage {stage}, but at stage {current_stage}. Ignored."
             )
