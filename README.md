@@ -3,6 +3,8 @@
 > **Agents League Hackathon 2026 — Reasoning Agents Track**
 > 6-Agent collaborative pipeline. AI structures. Humans decide. The organization gets smarter every run.
 
+**[📐 Interactive Architecture Diagram](https://jackycufe.github.io/IQRelay/)**
+
 ---
 
 ## The Problem
@@ -138,8 +140,8 @@ Every record written to Azure AI Search follows a unified 14-field schema:
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/JackyCufe/IQ Relay.git
-cd IQ Relay
+git clone https://github.com/JackyCufe/IQRelay.git
+cd IQRelay
 pip install -r requirements.txt
 
 # 2. Configure credentials
@@ -201,10 +203,9 @@ IQ Relay/
 │   └── schema_builder.py     # JSON extraction + schema validation
 ├── agents/                   # 6 Agent system prompts (Markdown)
 ├── config/                   # config.py + pipeline_config.yaml
-├── docs/                     # architecture.md + sprint-plan.md
+├── docs/                     # architecture.md + architecture-diagram.html
 ├── scripts/                  # index rebuild + seed data utilities
-├── teams-app/manifest.json   # Teams App sideload package
-└── test_bot_interactive.py   # E2E test suite
+└── teams-app/manifest.json   # Teams App sideload package
 ```
 
 ---
