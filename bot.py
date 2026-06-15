@@ -388,6 +388,11 @@ class RequirementBot(ActivityHandler):
             )
             return
 
+        # ?query → Foundry IQ search (regardless of pipeline state)
+        if text.startswith("?"):
+            await self._handle_query(turn_context, text[1:].strip())
+            return
+
         if uid in _active_pipelines:
             # Pipeline is active — handle based on status
             pipeline_data = _active_pipelines[uid]
